@@ -47,6 +47,10 @@ func SetClipboardData(h HANDLE) {
 	winAPI("user32.dll", "SetClipboardData", CF_UNICODETEXT, uintptr(h))
 }
 
+func EmptyClipboard() {
+	winAPI("user32.dll", "EmptyClipboard")
+}
+
 func GlobalSize(h HGLOBAL) uint64 {
 	r, _, _ := winAPI("kernel32.dll", "GlobalSize", uintptr(h))
 	return uint64(r)

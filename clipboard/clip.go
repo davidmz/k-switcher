@@ -40,6 +40,12 @@ func GetSeqNumber() uint32 {
 	return uint32(win32.GetClipboardSequenceNumber())
 }
 
+func Empty() {
+	win32.OpenClipboard()
+	win32.EmptyClipboard()
+	win32.CloseClipboard()
+}
+
 func readMemory(ptr unsafe.Pointer, size uint64) (result []byte) {
 	const bufSize = 512
 	var (

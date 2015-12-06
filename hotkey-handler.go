@@ -26,6 +26,7 @@ func HandleHotkey(trans *Transcoder) {
 		return
 	}
 	debug.Println(clipText, "→", newText)
+	clipboard.Empty()
 	clipboard.Put(newText)
 	SendCtrlV()
 
