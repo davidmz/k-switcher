@@ -139,6 +139,11 @@ func RegisterWindowMessage(msg string) uint32 {
 	return uint32(r)
 }
 
+func ShowWindow(h w32.HWND, st uint32) bool {
+	r, _, _ := __ShowWindow(uintptr(h), uintptr(st))
+	return r != 0
+}
+
 func Utf16zToString(in []byte) string {
 	out := make([]uint16, 0, len(in)/2)
 	x := uint16(0)
@@ -182,6 +187,7 @@ var (
 	__SetForegroundWindow        = winAPI("user32.dll", "SetForegroundWindow")
 	__GetWindowPlacement         = winAPI("user32.dll", "GetWindowPlacement")
 	__RegisterWindowMessage      = winAPI("user32.dll", "RegisterWindowMessageW")
+	__ShowWindow                 = winAPI("user32.dll", "ShowWindow")
 
 	__GlobalSize            = winAPI("kernel32.dll", "GlobalSize")
 	__SetConsoleCtrlHandler = winAPI("kernel32.dll", "SetConsoleCtrlHandler")

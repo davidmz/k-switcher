@@ -22,13 +22,13 @@ type (
 )
 
 func Show() {
-	w32.ShowWindow(win, w32.SW_NORMAL)
+	win32.ShowWindow(win, w32.SW_NORMAL)
 	win32.SetForegroundWindow(win)
 	isHidden = false
 }
 
 func Hide() {
-	w32.ShowWindow(win, w32.SW_HIDE)
+	win32.ShowWindow(win, w32.SW_HIDE)
 	isHidden = true
 }
 

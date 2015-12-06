@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	MODE_SEL       = 0
-	MODE_LAST_WORD = 1
+	MODE_SEL = 0
+	MODE_ALL = 1
 )
 
 func main() {
@@ -28,8 +28,8 @@ func main() {
 		fmt.Println("Не удаётся захватить комбинацию Shift+Break. Возможно, она занята другим приложением")
 		return
 	}
-	if ok := win32.RegisterHotKey(0, MODE_LAST_WORD, win32.MOD_NOREPEAT, w32.VK_PAUSE); !ok {
-		fmt.Println("Не удаётся захватить клавишу Break. Возможно, она занята другим приложением")
+	if ok := win32.RegisterHotKey(0, MODE_ALL, win32.MOD_SHIFT|win32.MOD_CONTROL|win32.MOD_NOREPEAT, w32.VK_PAUSE); !ok {
+		fmt.Println("Не удаётся захватить клавишу Ctrl+Shift+Break. Возможно, она занята другим приложением")
 		return
 	}
 
