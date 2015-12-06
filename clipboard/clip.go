@@ -1,64 +1,43 @@
-package main
+package clipboard
 
 import (
 	"unicode/utf16"
 	"unsafe"
 
-	"github.com/AllenDang/w32"
-	"github.com/davidmz/k-switcher/win32"
+	"github.com/davidmz/k-switcher.v2/win32"
 )
 
-type cbRecord struct {
-	Type uint
-	Data []byte
-}
-type CBRecords []*cbRecord
+func Get() string {
+	win32.OpenClipboard()
+	defer win32.CloseClipboard()
 
-func backupClipboard() (records CBRecords) {
-	w32.OpenClipboard(0)
-	defer w32.CloseClipboard()
-
-	// сохраняем только текст, потому что остальные форматы
-	// в общем случае сохранить невозможно
-	if d := readFromClipboard(w32.CF_UNICODETEXT); d != nil {
-		records = append(records, &cbRecord{Type: w32.CF_UNICODETEXT, Data: d})
-	}
-	return
-}
-
-func restoreClipboard(records CBRecords) {
-	w32.OpenClipboard(0)
-	defer w32.CloseClipboard()
-
-	w32.EmptyClipboard()
-	for _, rec := range records {
-		sendToClipboard(rec.Type, rec.Data)
-	}
-}
-
-func readFromClipboard(f uint) []byte {
-	h := w32.HGLOBAL(w32.GetClipboardData(f))
+	h := win32.HGLOBAL(win32.GetClipboardData())
 	if h == 0 {
-		return nil
+		return ""
 	}
 	sz := win32.GlobalSize(h)
 	if sz == 0 {
-		return nil
+		return ""
 	}
-	p := w32.GlobalLock(h)
-	defer w32.GlobalUnlock(h)
-	return readMemory(p, sz)
+	p := win32.GlobalLock(h)
+	defer win32.GlobalUnlock(h)
+	return utf16zToString(readMemory(p, sz))
 }
 
-func sendToClipboard(typ uint, data []byte) {
-	if len(data) == 0 {
-		return
-	}
-	h := w32.GlobalAlloc(w32.GHND, uint32(len(data)))
-	p := w32.GlobalLock(h)
+func Put(text string) {
+	win32.OpenClipboard()
+	defer win32.CloseClipboard()
+
+	data := stringToUtf16z(text)
+	h := win32.GlobalAlloc(win32.GHND, win32.SIZE_T(len(data)))
+	p := win32.GlobalLock(h)
 	writeMemory(p, data)
-	w32.GlobalUnlock(h)
-	w32.SetClipboardData(typ, w32.HANDLE(h))
+	win32.GlobalUnlock(h)
+	win32.SetClipboardData(win32.HANDLE(h))
+}
+
+func GetSeqNumber() uint32 {
+	return uint32(win32.GetClipboardSequenceNumber())
 }
 
 func readMemory(ptr unsafe.Pointer, size uint64) (result []byte) {

@@ -1,272 +1,108 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
+	"flag"
 	"fmt"
-	"image"
-	_ "image/png"
+	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/AllenDang/w32"
-	"github.com/davidmz/go-semaphore"
-	"github.com/davidmz/k-switcher/consolewin"
-	"github.com/davidmz/k-switcher/win32"
-	"github.com/lxn/walk"
-	"github.com/lxn/win"
+	"github.com/davidmz/k-switcher.v2/win32"
 )
 
-const (
-	MODE_SEL = 0
-	MODE_ALL = 1
-)
+var debug *log.Logger
 
 func main() {
+	flags := &struct {
+		ShowHelp  bool
+		DebugMode bool
+	}{}
 
-	if ok := win32.RegisterHotKey(0, MODE_SEL, win32.MOD_SHIFT|win32.MOD_NOREPEAT, w32.VK_PAUSE); !ok {
-		fmt.Println("Не удаётся захватить комбинацию Shift+Break. Возможно, она занята другим приложением")
+	flag.Usage = func() {
+		fmt.Println("Usage: " + filepath.Base(os.Args[0]) + " [options] [LAYOUT_NAME_1 LAYOUT_NAME_2]")
+		fmt.Println("Where options are:")
+		flag.PrintDefaults()
+		Pause()
+	}
+
+	flag.BoolVar(&flags.ShowHelp, "h", false, "Show options")
+	flag.BoolVar(&flags.DebugMode, "debug", false, "Turn debug log on")
+	flag.Parse()
+
+	if flags.ShowHelp {
+		flag.Usage()
 		return
 	}
-	if ok := win32.RegisterHotKey(0, MODE_ALL, win32.MOD_SHIFT|win32.MOD_CONTROL|win32.MOD_NOREPEAT, w32.VK_PAUSE); !ok {
-		fmt.Println("Не удаётся захватить клавишу Ctrl+Shift+Break. Возможно, она занята другим приложением")
-		return
+
+	if flags.DebugMode {
+		debug = log.New(os.Stderr, "DEBUG ", log.LstdFlags)
+	} else {
+		debug = log.New(ioutil.Discard, "DEBUG ", log.LstdFlags)
 	}
 
-	fmt.Println("K-Switcher запущен")
-
-	time.AfterFunc(3*time.Second, func() {
-		if consolewin.ShowState != w32.SW_HIDE {
-			consolewin.Hide()
-		}
-	})
-
-	var (
-		trayIcon      *walk.NotifyIcon
-		trayIconImage *walk.Icon
-	)
-
-	{
-		img, _, err := image.Decode(bytes.NewReader(iconData))
-		mustBeOk(err)
-		trayIconImage, err = walk.NewIconFromImage(img)
-		mustBeOk(err)
-	}
-
-	createTrayIcon := func() {
-		var err error
-
-		trayIcon, err = walk.NewNotifyIcon()
-		mustBeOk(err)
-
-		mustBeOk(trayIcon.SetToolTip("K-Switcher"))
-		mustBeOk(trayIcon.SetIcon(trayIconImage))
-		mustBeOk(trayIcon.SetVisible(true))
-
-		trayIcon.MouseDown().Attach(func(x, y int, button walk.MouseButton) {
-			if button == walk.LeftButton {
-				if consolewin.ShowState != w32.SW_HIDE {
-					consolewin.Hide()
-				} else {
-					consolewin.Show()
-				}
-			}
-		})
-	}
-	createTrayIcon()
-	HandleExplorerCrash(createTrayIcon)
-
-	consolewin.OnControlEvent(func(t int) bool {
-		if t == win32.CTRL_C_EVENT || t == win32.CTRL_BREAK_EVENT || t == win32.CTRL_CLOSE_EVENT {
-			mustBeOk(trayIcon.SetVisible(false))
-			fmt.Println("Выходим…")
-			os.Exit(0)
-		}
-		return false
-	})
-
-	consolewin.OnShowStateChange(func(showState uint32) {
-		if showState == w32.SW_SHOWMINIMIZED {
-			consolewin.Hide()
-		}
-	})
-
-	consolewin.SetTitle("K-Switcher")
-
-	myHKL := win32.GetKeyboardLayout(0)
-	win32.ActivateKeyboardLayout(myHKL, 0)
-
-	var lock = semaphore.Mutex()
-	msg := new(w32.MSG)
-	for w32.GetMessage(msg, 0, 0, 0) == 1 {
-		if msg.Message == w32.WM_HOTKEY {
-			if lock.Try() {
-				processHotkey(msg.WParam)
-				lock.Release()
-			}
-		}
-	}
-	fmt.Println("Bye!")
-}
-
-func processHotkey(mode uintptr) {
-	bkup := backupClipboard()
-
-	startClipNum := win32.GetClipboardSequenceNumber()
-	clipNum := startClipNum
-
-	if mode == MODE_LAST_WORD {
-		w32.SendInput(CtrlShiftLeftSeq)
-	} else if mode == MODE_SEL {
-		w32.SendInput(ShiftUpSeq)
-	}
-	w32.SendInput(CtrlCSeq)
-
-	timeout := time.NewTimer(500 * time.Millisecond)
-	tick := time.NewTicker(20 * time.Millisecond)
-	defer timeout.Stop()
-	defer tick.Stop()
-
-loop:
-	for {
-		select {
-		case <-tick.C:
-			if clipNum = win32.GetClipboardSequenceNumber(); clipNum > startClipNum {
-				break loop
-			}
-		case <-timeout.C:
-			break loop
-		}
-	}
-
-	if clipNum > startClipNum {
-		w32.OpenClipboard(0)
-		txt := utf16zToString(readFromClipboard(w32.CF_UNICODETEXT))
-		cnv, lastHKL := Transcode(txt)
-		fmt.Printf("%q → %q\n", txt, cnv)
-		w32.EmptyClipboard()
-		sendToClipboard(w32.CF_UNICODETEXT, stringToUtf16z(cnv))
-		w32.CloseClipboard()
-		w32.SendInput(CtrlVSeq)
-		if mode == MODE_SEL {
-			w32.SendInput(ShiftDownSeq)
-		}
-		time.AfterFunc(250*time.Millisecond, func() { restoreClipboard(bkup) })
-
-		// переключаем раскладку
-		w32.PostMessage(win32.GetForegroundWindow(), w32.WM_INPUTLANGCHANGEREQUEST, 0, uintptr(lastHKL))
-	}
-}
-
-var (
-	ShiftDownSeq = []w32.INPUT{
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_SHIFT},
-		},
-	}
-
-	ShiftUpSeq = []w32.INPUT{
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_SHIFT, DwFlags: win32.KEYEVENTF_KEYUP},
-		},
-	}
-
-	CtrlCSeq = []w32.INPUT{
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_CONTROL},
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: 0x43}, // C
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: 0x43, DwFlags: win32.KEYEVENTF_KEYUP},
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_CONTROL, DwFlags: win32.KEYEVENTF_KEYUP},
-		},
-	}
-
-	CtrlVSeq = []w32.INPUT{
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_CONTROL},
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: 0x56}, // V
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: 0x56, DwFlags: win32.KEYEVENTF_KEYUP},
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_CONTROL, DwFlags: win32.KEYEVENTF_KEYUP},
-		},
-	}
-
-	CtrlShiftLeftSeq = []w32.INPUT{
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_SHIFT},
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_CONTROL},
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			// http://letcoderock.blogspot.de/2011/10/sendinput-with-shift-key-not-work.html
-			Ki: w32.KEYBDINPUT{WVk: w32.VK_LEFT, DwFlags: win32.KEYEVENTF_EXTENDEDKEY},
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_LEFT, DwFlags: win32.KEYEVENTF_KEYUP | win32.KEYEVENTF_EXTENDEDKEY},
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_CONTROL, DwFlags: win32.KEYEVENTF_KEYUP},
-		},
-		w32.INPUT{
-			Type: w32.INPUT_KEYBOARD,
-			Ki:   w32.KEYBDINPUT{WVk: w32.VK_SHIFT, DwFlags: win32.KEYEVENTF_KEYUP},
-		},
-	}
-)
-
-func mustBeOk(err error) {
+	kList, err := GetSystemLayouts()
 	if err != nil {
-		log.Fatalln(err)
+		fmt.Fprintln(os.Stderr, "Error fetching system layouts:", err)
+		Pause()
+		os.Exit(1)
+	}
+	fmt.Printf("Found %d layout(s) in your system:\n", len(kList))
+	ourLayouts := []*KLayout{}
+	for _, k := range kList {
+		fmt.Printf("%s\t%s\n", k.Name, k.Title)
+		if l, ok := Layouts.Get(k.Name); ok {
+			k.Layout = l
+			ourLayouts = append(ourLayouts, k)
+		}
+	}
+	fmt.Println("")
+
+	switch len(ourLayouts) {
+	case 0:
+		fmt.Fprintf(os.Stderr, "No layouts is supported, sorry.\n")
+		Pause()
+		os.Exit(1)
+	case 1:
+		fmt.Fprintf(os.Stderr, "Only one layout is supported (%s), k-switcher is useless.\n", ourLayouts[0].Name)
+		Pause()
+		os.Exit(1)
+	case 2:
+		fmt.Printf("OK, will switch between %s and %s.\n", ourLayouts[0].Name, ourLayouts[1].Name)
+	default:
+		lNames := make([]string, len(ourLayouts))
+		for i, l := range ourLayouts {
+			lNames[i] = l.Name
+		}
+		fmt.Fprintf(os.Stderr, "%d layouts is supported (%s) but we can switch only between two.\n", len(ourLayouts), strings.Join(lNames, ", "))
+		fmt.Fprintf(os.Stderr, "Please specify layout names in program arguments.\n")
+		Pause()
+		os.Exit(1)
+	}
+
+	trans := NewTranscoder(ourLayouts[0], ourLayouts[1])
+
+	if !win32.RegisterHotKey(0, 0, win32.MOD_SHIFT|win32.MOD_NOREPEAT, win32.VK_PAUSE) {
+		fmt.Fprintln(os.Stderr, "Can not register Shift+Break hotkey.")
+		Pause()
+		os.Exit(1)
+	}
+
+	msg := new(win32.MSG)
+	for win32.GetMessage(msg, 0, 0, 0) {
+		if msg.Message == win32.WM_HOTKEY {
+			debug.Println("===========", time.Now())
+			debug.Println("Start handler")
+			HandleHotkey(trans)
+			debug.Println("End handler")
+		}
 	}
 }
 
-type EWin struct {
-	walk.WindowBase
-	handler func()
-}
-
-const winClass = `HandleExplorerCrashWin`
-
-var eCrashMessage uint32
-
-func HandleExplorerCrash(foo func()) {
-	walk.MustRegisterWindowClass(winClass)
-	eCrashMessage = win32.RegisterWindowMessage("TaskbarCreated")
-	w := new(EWin)
-	w.handler = foo
-	walk.InitWindow(w, nil, winClass, 0, 0)
-}
-
-func (e *EWin) WndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr {
-	if msg == eCrashMessage {
-		log.Println("TaskbarCreated")
-		time.AfterFunc(3*time.Second, e.handler)
-	}
-	return e.WindowBase.WndProc(hwnd, msg, wParam, lParam)
+func Pause() {
+	fmt.Fprintf(os.Stderr, "Press Enter to exit...\n")
+	bufio.NewReader(os.Stdin).ReadLine()
 }
