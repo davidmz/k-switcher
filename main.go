@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidmz/k-switcher.v2/win32"
+	"github.com/davidmz/k-switcher/win32"
 )
 
 var debug *log.Logger

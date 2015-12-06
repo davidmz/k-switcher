@@ -3,8 +3,8 @@ package main
 import (
 	"strings"
 
-	"github.com/davidmz/k-switcher.v2/errors"
-	"github.com/davidmz/k-switcher.v2/win32"
+	"github.com/davidmz/k-switcher/errors"
+	"github.com/davidmz/k-switcher/win32"
 	"github.com/davidmz/mustbe"
 	"golang.org/x/sys/windows/registry"
 )

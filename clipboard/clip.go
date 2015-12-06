@@ -4,7 +4,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
-	"github.com/davidmz/k-switcher.v2/win32"
+	"github.com/davidmz/k-switcher/win32"
 )
 
 func Get() string {
