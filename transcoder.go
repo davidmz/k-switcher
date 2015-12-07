@@ -1,7 +1,5 @@
 package main
 
-import "strings"
-
 type Transcoder struct {
 	Directions []*TranscodeDirection
 }
@@ -21,18 +19,22 @@ func (t *Transcoder) Transcode(str string) (outs string, lastLayout *KLayout) {
 	}
 
 	var (
-		word, out    []rune
-		dir, runeDir *TranscodeDirection
+		word, out []rune
+		dir       *TranscodeDirection
 	)
 
 	for _, r := range str {
-		runeDir = nil
+		runeDir, nDirs := (*TranscodeDirection)(nil), 0
 		for _, d := range t.Directions {
-			if d.HasUnique(r) {
+			if d.CanTranscode(r) {
+				nDirs++
 				runeDir = d
-				break
 			}
 		}
+		if nDirs != 1 {
+			runeDir = nil
+		}
+
 		if dir == nil || runeDir == nil || dir == runeDir { // продолжаем то же слово
 			if dir == nil {
 				dir = runeDir
@@ -60,8 +62,6 @@ func (t *Transcoder) Transcode(str string) (outs string, lastLayout *KLayout) {
 // Перекодировка из раскладки А  в раскладку Б
 type TranscodeDirection struct {
 	Src, Tgt *KLayout
-	// Символы, уникальные для кодировки А
-	UniqueRunes string
 	// Таблица перекодирования
 	Map map[rune]rune
 }
@@ -73,18 +73,16 @@ func NewTranscodeDirection(A, B *KLayout) *TranscodeDirection {
 		Map: make(map[rune]rune),
 	}
 	rA, rB := []rune(A.Layout), []rune(B.Layout)
-	uniq := []rune{}
 	for i, r := range rA {
 		dir.Map[r] = rB[i]
-		if !strings.ContainsRune(B.Layout, r) { // руна содержится только в раскладке A
-			uniq = append(uniq, r)
-		}
 	}
-	dir.UniqueRunes = string(uniq)
 	return dir
 }
 
-func (t *TranscodeDirection) HasUnique(r rune) bool { return strings.ContainsRune(t.UniqueRunes, r) }
+func (t *TranscodeDirection) CanTranscode(r rune) bool {
+	_, ok := t.Map[r]
+	return ok
+}
 
 func (t *TranscodeDirection) Transcode(in []rune) (out []rune) {
 	out = make([]rune, len(in))

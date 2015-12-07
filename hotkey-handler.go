@@ -21,11 +21,11 @@ func HandleHotkey(trans *Transcoder) {
 	debug.Printf("clipText: %q", clipText)
 	newText, lt := trans.Transcode(clipboard.Get())
 	if lt == nil {
-		debug.Println(clipText, "not converted")
+		debug.Printf("%q not converted", clipText)
 		clipboard.Put(clipData)
 		return
 	}
-	debug.Println(clipText, "→", newText)
+	debug.Printf("%q → %q", clipText, newText)
 	clipboard.Empty()
 	clipboard.Put(newText)
 	SendCtrlV()
