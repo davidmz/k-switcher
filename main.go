@@ -52,8 +52,8 @@ func main() {
 	}
 	fmt.Printf("Found %d layout(s) in your system:\n", len(kList))
 	ourLayouts := []*KLayout{}
-	for _, k := range kList {
-		fmt.Printf("%s\t%s\n", k.Name, k.Title)
+	for i, k := range kList {
+		fmt.Printf("  %d. %s\t%s\n", i+1, k.Name, k.Title)
 		if l, ok := Layouts.Get(k.Name); ok {
 			k.Layout = l
 			ourLayouts = append(ourLayouts, k)
