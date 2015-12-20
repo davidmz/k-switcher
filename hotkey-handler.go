@@ -17,14 +17,31 @@ func HandleHotkey(trans *Transcoder) {
 		debug.Println("No changes in clipboard")
 		return
 	}
+
 	clipText := clipboard.Get()
 	debug.Printf("clipText: %q", clipText)
-	newText, lt := trans.Transcode(clipboard.Get())
-	if lt == nil {
-		debug.Printf("%q not converted", clipText)
+
+	if clipText == "" {
+		debug.Printf("nothing to do")
 		clipboard.Put(clipData)
 		return
 	}
+
+	newText, lt := trans.Transcode(clipboard.Get())
+
+	if lt == nil {
+		debug.Printf("%q was not auto converted", clipText)
+		fgThreadId := win32.GetWindowThreadProcessId(win32.GetForegroundWindow())
+		kl := win32.GetKeyboardLayout(fgThreadId)
+		for _, dir := range trans.Directions {
+			if dir.Src.Key == kl {
+				debug.Printf("found layout: %v", dir.Src.Name)
+				newText = string(dir.Transcode([]rune(clipText)))
+				lt = dir.Tgt
+			}
+		}
+	}
+
 	debug.Printf("%q → %q", clipText, newText)
 	clipboard.Empty()
 	clipboard.Put(newText)

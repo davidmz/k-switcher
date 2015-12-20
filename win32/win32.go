@@ -15,6 +15,11 @@ func ActivateKeyboardLayout(hkl HKL, flags uint32) HKL {
 	return HKL(r)
 }
 
+func GetKeyboardLayout(idThread DWORD) HKL {
+	r, _, _ := winAPI("user32.dll", "GetKeyboardLayout", uintptr(idThread))
+	return HKL(r)
+}
+
 func GetKeyboardLayoutName() string {
 	buf := make([]byte, 2*KL_NAMELENGTH)
 	winAPI("user32.dll", "GetKeyboardLayoutNameW", uintptr(unsafe.Pointer(&buf[0])))
@@ -98,6 +103,11 @@ func GetActiveWindow() HWND {
 func GetForegroundWindow() HWND {
 	r, _, _ := winAPI("user32.dll", "GetForegroundWindow")
 	return HWND(r)
+}
+
+func GetWindowThreadProcessId(hWnd HWND) DWORD {
+	r, _, _ := winAPI("user32.dll", "GetWindowThreadProcessId", uintptr(hWnd))
+	return DWORD(r)
 }
 
 func PostMessage(hWnd HWND, Msg UINT, wParam WPARAM, lParam LPARAM) bool {
